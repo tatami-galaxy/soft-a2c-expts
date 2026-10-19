@@ -1,0 +1,13 @@
+# Experiment artifacts
+models/
+data/
+results/
+
+# Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
