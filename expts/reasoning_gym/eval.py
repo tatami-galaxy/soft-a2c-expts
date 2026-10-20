@@ -1,7 +1,7 @@
 """Evaluate a model with vLLM on a fixed, reproducible Reasoning Gym question set.
 
 From the repository root (select an available GPU):
-    CUDA_VISIBLE_DEVICES=4 uv run python -m experiments.reasoning_gym.eval \
+    CUDA_VISIBLE_DEVICES=4 uv run python -m expts.reasoning_gym.eval \
         --task leg_counting --num_examples 100 --seed 1000000 \
         --task_config '{"min_animals": 5, "max_animals": 5}'
 

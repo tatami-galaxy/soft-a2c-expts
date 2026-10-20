@@ -1,7 +1,7 @@
 """Fine-tune all model parameters on streamed Reasoning Gym questions with TRL GRPO.
 
 From the repository root (select an available GPU):
-    CUDA_VISIBLE_DEVICES=4 uv run python -m experiments.reasoning_gym.train_grpo \
+    CUDA_VISIBLE_DEVICES=4 uv run python -m expts.reasoning_gym.train_grpo \
         --task leg_counting --max_steps 100
 
 Override task defaults with --task_config '{"max_animals": 5}'.
