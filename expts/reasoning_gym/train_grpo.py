@@ -6,6 +6,7 @@ From the repository root (select an available GPU):
 
 Override task defaults with --task_config '{"max_animals": 5}'.
 Override the W&B account or team with --wandb_entity TEAM.
+Override the default MODEL-TASK-seedSEED run name with --run_name NAME.
 Standard GRPOConfig arguments are also accepted; see --help.
 Tested with TRL 1.16.0 and reasoning-gym 0.1.25.
 """
@@ -83,6 +84,9 @@ def main():
         gradient_accumulation_steps=1,
         num_generations=8,
         max_completion_length=8192,
+        use_vllm=True,
+        vllm_mode="colocate",
+        vllm_gpu_memory_utilization=0.3,
         learning_rate=1e-5,
         bf16=True,
         gradient_checkpointing=True,
@@ -110,7 +114,8 @@ def main():
         parser.error("Streaming training requires --max_steps > 0.")
 
     model_label = experiment.model_name.rstrip("/").split("/")[-1]
-    args.run_name = f"{model_label}-{experiment.task}-seed{args.seed}"
+    if args.run_name is None:
+        args.run_name = f"{model_label}-{experiment.task}-seed{args.seed}"
     # HfArgumentParser initializes the Trainer's default output_dir before this point.
     if args.output_dir == "trainer_output":
         args.output_dir = f"results/reasoning_gym/{args.run_name}"
