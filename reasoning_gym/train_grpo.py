@@ -18,9 +18,10 @@ from pathlib import Path
 
 import reasoning_gym
 from datasets import IterableDataset
-from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from trl import GRPOConfig, GRPOTrainer
+
+from task_utils import extract_final_answer, make_prompt
 
 
 WANDB_PROJECT = "reasoning-gym"
@@ -43,10 +44,7 @@ def generate_examples(task, task_config, seed):
         )
         entry = dataset[0]
         yield {
-            "prompt": [
-                {"role": "system", "content": SYSTEM_PROMPTS["default"]},
-                {"role": "user", "content": entry["question"]},
-            ],
+            "prompt": make_prompt(entry["question"]),
             "entry": entry,
             "example_id": example_id,
         }
@@ -58,12 +56,7 @@ def make_reward_function(dataset, tokenizer, enable_thinking):
         for token_ids, example in zip(completion_ids, entry, strict=True):
             # Decode tokens ourselves so TRL's response parsing cannot remove </think>.
             response = tokenizer.decode(token_ids, skip_special_tokens=False)
-            thinking_done = "</think>" in response
-            if thinking_done:
-                response = response.rsplit("</think>", 1)[1]
-            elif enable_thinking:
-                response = ""
-            answer = extract_answer(response)
+            answer, thinking_done = extract_final_answer(response, enable_thinking)
             reward = dataset.score_answer(answer, example) if answer else 0.0
             answers.append(answer)
             rewards.append(float(reward))
