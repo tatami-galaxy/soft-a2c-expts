@@ -1,7 +1,7 @@
 """Fine-tune all model parameters on streamed Reasoning Gym questions with TRL GRPO.
 
 From the repository root (select an available GPU):
-    CUDA_VISIBLE_DEVICES=4 .venv/bin/python reasoning_gym/train_grpo.py \
+    CUDA_VISIBLE_DEVICES=4 uv run python -m experiments.reasoning_gym.train_grpo \
         --task leg_counting --max_steps 100
 
 Override task defaults with --task_config '{"max_animals": 5}'.
@@ -21,7 +21,7 @@ from datasets import IterableDataset
 from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from trl import GRPOConfig, GRPOTrainer
 
-from task_utils import extract_final_answer, make_prompt
+from .task_utils import extract_final_answer, make_prompt
 
 
 WANDB_PROJECT = "reasoning-gym"

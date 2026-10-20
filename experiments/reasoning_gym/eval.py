@@ -1,7 +1,7 @@
 """Evaluate a model with vLLM on a fixed, reproducible Reasoning Gym question set.
 
 From the repository root (select an available GPU):
-    CUDA_VISIBLE_DEVICES=4 .venv/bin/python reasoning_gym/eval.py \
+    CUDA_VISIBLE_DEVICES=4 uv run python -m experiments.reasoning_gym.eval \
         --task leg_counting --num_examples 100 --seed 1000000 \
         --task_config '{"min_animals": 5, "max_animals": 5}'
 
@@ -10,6 +10,7 @@ One response is sampled per question. Use the same arguments and package version
 to regenerate the question set; generation_seed separately controls model sampling.
 vLLM batches the prompts automatically. Select GPUs with CUDA_VISIBLE_DEVICES;
 use --tensor_parallel_size to split a model across multiple GPUs.
+uv run uses the local .venv and puts build tools such as ninja on PATH.
 """
 
 import json
@@ -24,7 +25,7 @@ from reasoning_gym.utils import SYSTEM_PROMPTS
 from transformers import HfArgumentParser
 from vllm import LLM, SamplingParams
 
-from task_utils import extract_final_answer, make_prompt
+from .task_utils import extract_final_answer, make_prompt
 
 
 @dataclass
