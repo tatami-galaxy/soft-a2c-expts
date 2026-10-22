@@ -33,7 +33,6 @@ class ExperimentConfig:
     model_name: str = "Qwen/Qwen3-4B"
     task: str = "leg_counting"
     task_config: str = "{}"
-    enable_thinking: bool = True
     wandb_entity: str = "ujan-rl"
 
 
@@ -51,13 +50,13 @@ def generate_examples(task, task_config, seed):
         }
 
 
-def make_reward_function(dataset, tokenizer, enable_thinking):
+def make_reward_function(dataset, tokenizer):
     def reasoning_reward(completion_ids, entry, log_metric=None, log_extra=None, **kwargs):
         answers, rewards, thinking_finished = [], [], []
         for token_ids, example in zip(completion_ids, entry, strict=True):
             # Decode tokens ourselves so TRL's response parsing cannot remove </think>.
             response = tokenizer.decode(token_ids, skip_special_tokens=False)
-            answer, thinking_done = extract_final_answer(response, enable_thinking)
+            answer, thinking_done = extract_final_answer(response)
             reward = dataset.score_answer(answer, example) if answer else 0.0
             answers.append(answer)
             rewards.append(float(reward))
@@ -66,8 +65,7 @@ def make_reward_function(dataset, tokenizer, enable_thinking):
         if log_metric:
             log_metric("full_credit_rate", sum(r == 1.0 for r in rewards) / len(rewards))
             log_metric("answer_extraction_rate", sum(bool(a) for a in answers) / len(answers))
-            if enable_thinking:
-                log_metric("thinking_complete_rate", sum(thinking_finished) / len(thinking_finished))
+            log_metric("thinking_complete_rate", sum(thinking_finished) / len(thinking_finished))
         if log_extra:
             log_extra("extracted_answer", answers)
             log_extra("reference_answer", [example["answer"] for example in entry])
@@ -102,8 +100,8 @@ def main():
         report_to="wandb",
         save_steps=100,
         save_total_limit=2,
-        temperature=None,
-        top_p=None,
+        temperature=0.6,
+        top_p=0.95,
         top_k=20,
     )
     experiment, args = parser.parse_args_into_dataclasses()
@@ -119,13 +117,10 @@ def main():
     # HfArgumentParser initializes the Trainer's default output_dir before this point.
     if args.output_dir == "trainer_output":
         args.output_dir = f"results/reasoning_gym/{args.run_name}"
-    args.chat_template_kwargs = {
-        **(args.chat_template_kwargs or {}), "enable_thinking": experiment.enable_thinking
-    }
-    if args.temperature is None:
-        args.temperature = 0.6 if experiment.enable_thinking else 0.7
-    if args.top_p is None:
-        args.top_p = 0.95 if experiment.enable_thinking else 0.8
+    # Pass enable_thinking explicitly so models whose templates default to False still think.
+    args.chat_template_kwargs = {"enable_thinking": True, **(args.chat_template_kwargs or {})}
+    if args.chat_template_kwargs["enable_thinking"] is not True:
+        parser.error("Only thinking mode is supported; enable_thinking must be true.")
     args.generation_kwargs = {"min_p": 0.0, **(args.generation_kwargs or {})}
     args.model_init_kwargs = {
         "dtype": "bfloat16" if args.bf16 else "float32", **(args.model_init_kwargs or {})
@@ -145,7 +140,7 @@ def main():
         args=args,
         processing_class=tokenizer,
         train_dataset=train_dataset,
-        reward_funcs=make_reward_function(dataset, tokenizer, experiment.enable_thinking),
+        reward_funcs=make_reward_function(dataset, tokenizer),
     )
 
     run = None

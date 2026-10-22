@@ -37,9 +37,8 @@ class EvalConfig:
     num_examples: int = 500
     generation_seed: int = 42
     max_new_tokens: int = 8192
-    enable_thinking: bool = True
-    temperature: float | None = None
-    top_p: float | None = None
+    temperature: float = 0.6
+    top_p: float = 0.95
     top_k: int = 20
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.8
@@ -60,6 +59,7 @@ def summarize(results):
         "min_response_length": min(row["response_length"] for row in results),
         "max_response_length": max(row["response_length"] for row in results),
         "truncation_rate": mean(row["truncated"] for row in results),
+        "thinking_complete_rate": mean(row["thinking_complete"] for row in results),
     }
 
 
@@ -73,10 +73,6 @@ def main():
         parser.error("num_examples, max_new_tokens, tensor_parallel_size, and max_num_seqs must be positive.")
     if not 0 < args.gpu_memory_utilization <= 1:
         parser.error("gpu_memory_utilization must be in (0, 1].")
-    if args.temperature is None:
-        args.temperature = 0.6 if args.enable_thinking else 0.7
-    if args.top_p is None:
-        args.top_p = 0.95 if args.enable_thinking else 0.8
     if args.temperature <= 0 or not 0 < args.top_p <= 1 or args.top_k < 0:
         parser.error("Sampling requires temperature > 0, 0 < top_p <= 1, and top_k >= 0.")
 
@@ -118,10 +114,11 @@ def main():
         generation_config="vllm",
     )
     tokenizer = llm.get_tokenizer()
+    # Pass enable_thinking explicitly so models whose templates default to False still think.
     prompts = [
         {"prompt_token_ids": tokenizer.apply_chat_template(
             make_prompt(entry["question"]), tokenize=True, return_dict=False,
-            add_generation_prompt=True, enable_thinking=args.enable_thinking,
+            add_generation_prompt=True, enable_thinking=True,
         )}
         for entry in entries
     ]
@@ -140,7 +137,7 @@ def main():
     with (output_dir / "results.jsonl").open("w") as file:
         for index, (entry, output) in enumerate(zip(entries, outputs, strict=True)):
             completion = output.outputs[0]
-            answer, thinking_done = extract_final_answer(completion.text, args.enable_thinking)
+            answer, thinking_done = extract_final_answer(completion.text)
             score = dataset.score_answer(answer, entry) if answer else 0.0
             result = {
                 "example_id": index,
@@ -157,8 +154,6 @@ def main():
             file.write(json.dumps(result, ensure_ascii=False) + "\n")
 
     summary = summarize(results)
-    if args.enable_thinking:
-        summary["thinking_complete_rate"] = mean(row["thinking_complete"] for row in results)
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
     print(f"Results saved to {output_dir}")

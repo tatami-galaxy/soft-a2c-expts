@@ -10,10 +10,8 @@ def make_prompt(question):
     ]
 
 
-def extract_final_answer(response, enable_thinking):
-    thinking_done = "</think>" in response
-    if thinking_done:
-        response = response.rsplit("</think>", 1)[1]
-    elif enable_thinking:
-        response = ""
-    return extract_answer(response), thinking_done
+def extract_final_answer(response):
+    """Only text after </think> counts; a response that never finishes thinking has no answer."""
+    if "</think>" not in response:
+        return None, False
+    return extract_answer(response.rsplit("</think>", 1)[1]), True
