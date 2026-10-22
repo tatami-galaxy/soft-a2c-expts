@@ -1,7 +1,7 @@
 """Fine-tune all model parameters on streamed Reasoning Gym questions with TRL GRPO.
 
 From the repository root (select an available GPU):
-    CUDA_VISIBLE_DEVICES=4 uv run python -m expts.reasoning_gym.train_grpo \
+    CUDA_VISIBLE_DEVICES=4 uv run python -m expts.reasoning_gym.grpo.train \
         --task leg_counting --max_steps 100
 
 Override task defaults with --task_config '{"max_animals": 5}'.
@@ -12,28 +12,18 @@ Tested with TRL 1.16.0 and reasoning-gym 0.1.25.
 """
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from importlib.metadata import version
 from itertools import count
 from pathlib import Path
 
 import reasoning_gym
 from datasets import IterableDataset
-from transformers import AutoTokenizer, HfArgumentParser, set_seed
-from trl import GRPOConfig, GRPOTrainer
+from transformers import AutoTokenizer, set_seed
+from trl import GRPOTrainer
 
-from .task_utils import extract_final_answer, make_prompt
-
-
-WANDB_PROJECT = "reasoning-gym"
-
-
-@dataclass
-class ExperimentConfig:
-    model_name: str = "Qwen/Qwen3-4B"
-    task: str = "leg_counting"
-    task_config: str = "{}"
-    wandb_entity: str = "ujan-rl"
+from ..task_utils import extract_final_answer, make_prompt
+from .config import parse_config
 
 
 def generate_examples(task, task_config, seed):
@@ -75,64 +65,15 @@ def make_reward_function(dataset, tokenizer):
 
 
 def main():
-    parser = HfArgumentParser((ExperimentConfig, GRPOConfig))
-    parser.set_defaults(
-        max_steps=1000,
-        per_device_train_batch_size=8,
-        gradient_accumulation_steps=1,
-        num_generations=8,
-        max_completion_length=8192,
-        use_vllm=True,
-        vllm_mode="colocate",
-        vllm_gpu_memory_utilization=0.3,
-        learning_rate=1e-5,
-        bf16=True,
-        gradient_checkpointing=True,
-        loss_type="dapo",
-        beta=0.0,
-        scale_rewards="group",
-        mask_truncated_completions=True,
-        shuffle_dataset=False,
-        dataloader_num_workers=0,
-        remove_unused_columns=False,
-        logging_steps=1,
-        log_completions=False,
-        report_to="wandb",
-        save_steps=100,
-        save_total_limit=2,
-        temperature=0.6,
-        top_p=0.95,
-        top_k=20,
-    )
-    experiment, args = parser.parse_args_into_dataclasses()
-    task_config = json.loads(experiment.task_config)
-    if not isinstance(task_config, dict) or {"seed", "size"} & task_config.keys():
-        parser.error("--task_config must be a JSON object without seed or size; use --seed.")
-    if args.max_steps <= 0:
-        parser.error("Streaming training requires --max_steps > 0.")
-
-    model_label = experiment.model_name.rstrip("/").split("/")[-1]
-    if args.run_name is None:
-        args.run_name = f"{model_label}-{experiment.task}-seed{args.seed}"
-    # HfArgumentParser initializes the Trainer's default output_dir before this point.
-    if args.output_dir == "trainer_output":
-        args.output_dir = f"results/reasoning_gym/{args.run_name}"
-    # Pass enable_thinking explicitly so models whose templates default to False still think.
-    args.chat_template_kwargs = {"enable_thinking": True, **(args.chat_template_kwargs or {})}
-    if args.chat_template_kwargs["enable_thinking"] is not True:
-        parser.error("Only thinking mode is supported; enable_thinking must be true.")
-    args.generation_kwargs = {"min_p": 0.0, **(args.generation_kwargs or {})}
-    args.model_init_kwargs = {
-        "dtype": "bfloat16" if args.bf16 else "float32", **(args.model_init_kwargs or {})
-    }
+    experiment, args = parse_config()
     set_seed(args.seed)
 
     dataset = reasoning_gym.create_dataset(
-        experiment.task, seed=args.seed, size=1, **task_config
+        experiment.task, seed=args.seed, size=1, **experiment.task_config
     )
     train_dataset = IterableDataset.from_generator(
         generate_examples,
-        gen_kwargs={"task": experiment.task, "task_config": task_config, "seed": args.seed},
+        gen_kwargs={"task": experiment.task, "task_config": experiment.task_config, "seed": args.seed},
     )
     tokenizer = AutoTokenizer.from_pretrained(experiment.model_name, padding_side="left")
     trainer = GRPOTrainer(
@@ -161,7 +102,7 @@ def main():
             import wandb
 
             run = wandb.init(
-                project=WANDB_PROJECT,
+                project=experiment.wandb_project,
                 entity=experiment.wandb_entity,
                 name=args.run_name,
                 config=config,
