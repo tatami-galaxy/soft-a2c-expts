@@ -14,38 +14,17 @@ uv run uses the local .venv and puts build tools such as ninja on PATH.
 """
 
 import json
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from dataclasses import asdict
 from importlib.metadata import version
 from pathlib import Path
 from statistics import mean
 
 import reasoning_gym
 from reasoning_gym.utils import SYSTEM_PROMPTS
-from transformers import HfArgumentParser
 from vllm import LLM, SamplingParams
 
+from .grpo.config import parse_eval_config
 from .task_utils import extract_final_answer, make_prompt
-
-
-@dataclass
-class EvalConfig:
-    model_name: str = "Qwen/Qwen3-4B"
-    task: str = "leg_counting"
-    task_config: str = "{}"
-    seed: int = 1_000_000
-    num_examples: int = 500
-    generation_seed: int = 42
-    max_new_tokens: int = 8192
-    temperature: float = 0.6
-    top_p: float = 0.95
-    top_k: int = 20
-    tensor_parallel_size: int = 1
-    gpu_memory_utilization: float = 0.8
-    max_model_len: int | None = None
-    max_num_seqs: int = 64
-    enforce_eager: bool = False
-    output_dir: str | None = None
 
 
 def summarize(results):
@@ -64,30 +43,15 @@ def summarize(results):
 
 
 def main():
-    parser = HfArgumentParser(EvalConfig)
-    (args,) = parser.parse_args_into_dataclasses()
-    task_config = json.loads(args.task_config)
-    if not isinstance(task_config, dict) or {"seed", "size"} & task_config.keys():
-        parser.error("--task_config must be a JSON object without seed or size.")
-    if min(args.num_examples, args.max_new_tokens, args.tensor_parallel_size, args.max_num_seqs) <= 0:
-        parser.error("num_examples, max_new_tokens, tensor_parallel_size, and max_num_seqs must be positive.")
-    if not 0 < args.gpu_memory_utilization <= 1:
-        parser.error("gpu_memory_utilization must be in (0, 1].")
-    if args.temperature <= 0 or not 0 < args.top_p <= 1 or args.top_k < 0:
-        parser.error("Sampling requires temperature > 0, 0 < top_p <= 1, and top_k >= 0.")
+    args = parse_eval_config()
 
     dataset = reasoning_gym.create_dataset(
-        args.task, seed=args.seed, size=args.num_examples, **task_config
+        args.task, seed=args.seed, size=args.num_examples, **args.task_config
     )
     entries = list(dataset)
-    model_label = args.model_name.rstrip("/").split("/")[-1]
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
-    output_dir = Path(args.output_dir or (
-        f"results/reasoning_gym/eval/{model_label}-{args.task}-seed{args.seed}-{timestamp}"
-    ))
+    output_dir = Path(args.output_dir)
     # A fresh directory prevents accidentally mixing results from different runs.
     output_dir.mkdir(parents=True, exist_ok=False)
-    args.output_dir = str(output_dir)
     with (output_dir / "eval_set.jsonl").open("w") as file:
         for index, entry in enumerate(entries):
             file.write(json.dumps({"example_id": index, **entry}, ensure_ascii=False) + "\n")
