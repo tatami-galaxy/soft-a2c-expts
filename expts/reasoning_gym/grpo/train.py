@@ -4,6 +4,12 @@ From the repository root (select an available GPU):
     CUDA_VISIBLE_DEVICES=4 uv run python -m expts.reasoning_gym.grpo.train \
         --task leg_counting --max_steps 100
 
+MiniCPM5-2B-SFT uses the same thinking/answer format. Set its sampling parameters:
+    CUDA_VISIBLE_DEVICES=7 uv run python -m expts.reasoning_gym.grpo.train \
+        --model_name openbmb/MiniCPM5-2B-SFT --task leg_counting \
+        --temperature 1.0 --top_k 0 --max_steps 100
+
+Both models use top_p=0.95 and min_p=0.0. Qwen sampling remains the default.
 Override task defaults with --task_config '{"max_animals": 5}'.
 Override the W&B account or team with --wandb_entity TEAM.
 Override the default MODEL-TASK-seedSEED run name with --run_name NAME.

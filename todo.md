@@ -2,4 +2,4 @@
 - Actor critic -> PPO
 - SAC
 - Change max ent objective?
-- NLAC
+- NLAC, segment policy opt, multi turn dense feedback

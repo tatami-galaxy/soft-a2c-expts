@@ -1,10 +1,16 @@
 """Evaluate a model with vLLM on a fixed, reproducible Reasoning Gym question set.
 
 From the repository root (select an available GPU):
-    CUDA_VISIBLE_DEVICES=4 uv run python -m expts.reasoning_gym.eval \
+    CUDA_VISIBLE_DEVICES=4 uv run python -m expts.reasoning_gym.eval.eval \
         --task leg_counting --num_examples 100 --seed 1000000 \
         --task_config '{"min_animals": 5, "max_animals": 5}'
 
+For MiniCPM5-2B-SFT (also use these sampling settings for its trained checkpoints):
+    CUDA_VISIBLE_DEVICES=7 uv run python -m expts.reasoning_gym.eval.eval \
+        --model_name openbmb/MiniCPM5-2B-SFT --task leg_counting \
+        --temperature 1.0 --top_k 0 --num_examples 100
+
+Both models use top_p=0.95 and min_p=0.0. Qwen sampling remains the default.
 Use --model_name with a Hugging Face model ID or a full-model checkpoint directory.
 One response is sampled per question. Use the same arguments and package versions
 to regenerate the question set; generation_seed separately controls model sampling.
@@ -23,8 +29,8 @@ import reasoning_gym
 from reasoning_gym.utils import SYSTEM_PROMPTS
 from vllm import LLM, SamplingParams
 
-from .grpo.config import parse_eval_config
-from .task_utils import extract_final_answer, make_prompt
+from ..task_utils import extract_final_answer, make_prompt
+from .config import parse_eval_config
 
 
 def summarize(results):
