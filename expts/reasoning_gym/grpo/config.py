@@ -53,9 +53,9 @@ class TrainingConfig(GRPOConfig):
     generation_kwargs: dict | str | None = field(default_factory=lambda: {"min_p": 0.0})
 
 
-def parse_config(argv=None):
+def parse_config(argv=None, config_class=TrainingConfig, method=None):
     """Parse training CLI overrides, validate inputs, and resolve dependent settings."""
-    parser = HfArgumentParser((ExperimentConfig, TrainingConfig))
+    parser = HfArgumentParser((ExperimentConfig, config_class))
     experiment, args = parser.parse_args_into_dataclasses(args=argv)
 
     if isinstance(experiment.task_config, str):
@@ -70,7 +70,8 @@ def parse_config(argv=None):
 
     model_label = experiment.model_name.rstrip("/").split("/")[-1]
     if args.run_name is None:
-        args.run_name = f"{model_label}-{experiment.task}-seed{args.seed}"
+        prefix = f"{method}-" if method else ""
+        args.run_name = f"{prefix}{model_label}-{experiment.task}-seed{args.seed}"
     # TrainingArguments resolves an omitted output_dir to trainer_output.
     if args.output_dir == "trainer_output":
         args.output_dir = f"/mnt/data/ujan/sac/reasoning_gym/{args.run_name}"
