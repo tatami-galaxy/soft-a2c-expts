@@ -6,6 +6,8 @@
 Uses a separate critic, GAE, and GRPOTrainer's vLLM generation / clipped policy
 loss, not TRL's PPOTrainer. Select ONE training GPU. For larger models, use
 --vllm_mode server with a separately launched vLLM server.
+Use --task all for uniform sampling over all registered tasks at default difficulty.
+Set PYTHONHASHSEED=0 for reproducibility across processes (some tasks use sets).
 
 Eight rollouts per prompt match the GRPO baseline. --num_generations 1 is also
 supported with an even generation batch. --num_iterations controls rollout
@@ -23,18 +25,21 @@ from dataclasses import asdict
 from importlib.metadata import version
 from pathlib import Path
 
-import reasoning_gym
 from datasets import IterableDataset
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, set_seed
 from transformers.trainer_utils import get_last_checkpoint
 
-from ..task_utils import generate_examples, make_reward_function
+from ..task_utils import (
+    create_task_dataset, generate_examples, make_reward_function,
+    resolved_task_config, task_sampling_config, validate_mixture_resume,
+)
 from .config import parse_config
 from .trainer import PPOTrainer
 
 
 def validate_resume(checkpoint, config):
     """Optimizer state restores learning rates; reject misleading CLI changes."""
+    validate_mixture_resume(checkpoint, config)
     previous = json.loads((Path(checkpoint).parent / "run_config.json").read_text())
     for key in ("method", "model_name", "task", "task_config", "versions"):
         if previous.get(key) != config[key]:
@@ -60,14 +65,15 @@ def validate_resume(checkpoint, config):
 def main():
     experiment, args = parse_config()
     set_seed(args.seed)
-    dataset = reasoning_gym.create_dataset(
-        experiment.task, seed=args.seed, size=1, **experiment.task_config
+    dataset = create_task_dataset(
+        experiment.task, experiment.task_config, seed=args.seed
     )
     output_dir = Path(args.output_dir)
     config = {
         **asdict(experiment),
         "method": "ppo",
-        "task_config": asdict(dataset.config),
+        "task_config": resolved_task_config(dataset),
+        "task_sampling": task_sampling_config(experiment.task),
         "training": args.to_dict(),
         "versions": {name: version(name) for name in (
             "reasoning-gym", "trl", "transformers", "torch", "datasets", "accelerate", "vllm"

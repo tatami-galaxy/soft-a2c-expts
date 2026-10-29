@@ -14,27 +14,33 @@ Both models use top_p=0.95 and min_p=0.0. Qwen sampling remains the default.
 Use --model_name with a Hugging Face model ID or a full-model checkpoint directory.
 One response is sampled per question. Use the same arguments and package versions
 to regenerate the question set; generation_seed separately controls model sampling.
+With --task all, num_examples is PER TASK; evaluation is balanced, with per-task
+metrics and macro averages. Set PYTHONHASHSEED=0 for cross-process reproducibility.
 vLLM batches the prompts automatically. Select GPUs with CUDA_VISIBLE_DEVICES;
 use --tensor_parallel_size to split a model across multiple GPUs.
 uv run uses the local .venv and puts build tools such as ninja on PATH.
 """
 
 import json
+import os
 from dataclasses import asdict
 from importlib.metadata import version
 from pathlib import Path
 from statistics import mean
 
-import reasoning_gym
+from collections import defaultdict
 from reasoning_gym.utils import SYSTEM_PROMPTS
 from vllm import LLM, SamplingParams
 
-from ..task_utils import extract_final_answer, make_prompt
+from ..task_utils import (
+    create_task_dataset, evaluation_entries, extract_final_answer, make_prompt,
+    resolved_task_config,
+)
 from .config import parse_eval_config
 
 
-def summarize(results):
-    return {
+def summarize(results, by_task=False):
+    summary = {
         "num_examples": len(results),
         "num_full_credit": sum(row["score"] == 1.0 for row in results),
         "full_credit_rate": mean(row["score"] == 1.0 for row in results),
@@ -46,15 +52,23 @@ def summarize(results):
         "truncation_rate": mean(row["truncated"] for row in results),
         "thinking_complete_rate": mean(row["thinking_complete"] for row in results),
     }
+    if by_task:
+        groups = defaultdict(list)
+        for row in results:
+            groups[row["metadata"]["source_dataset"]].append(row)
+        summary["per_task"] = {name: summarize(rows) for name, rows in sorted(groups.items())}
+        summary["macro_full_credit_rate"] = mean(row["full_credit_rate"] for row in summary["per_task"].values())
+        summary["macro_mean_reward"] = mean(row["mean_reward"] for row in summary["per_task"].values())
+    return summary
 
 
 def main():
     args = parse_eval_config()
 
-    dataset = reasoning_gym.create_dataset(
-        args.task, seed=args.seed, size=args.num_examples, **args.task_config
+    dataset = create_task_dataset(
+        args.task, args.task_config, seed=args.seed, size=args.num_examples
     )
-    entries = list(dataset)
+    entries = evaluation_entries(dataset)
     output_dir = Path(args.output_dir)
     # A fresh directory prevents accidentally mixing results from different runs.
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -63,7 +77,9 @@ def main():
             file.write(json.dumps({"example_id": index, **entry}, ensure_ascii=False) + "\n")
     config = {
         **asdict(args),
-        "task_config": asdict(dataset.config),
+        "task_config": resolved_task_config(dataset),
+        "task_sampling": "balanced_per_task" if args.task == "all" else "single_task",
+        "python_hash_seed": os.environ.get("PYTHONHASHSEED", "random"),
         "system_prompt": SYSTEM_PROMPTS["default"],
         "versions": {
             name: version(name) for name in ("reasoning-gym", "vllm", "transformers", "torch")
@@ -123,7 +139,7 @@ def main():
             results.append(result)
             file.write(json.dumps(result, ensure_ascii=False) + "\n")
 
-    summary = summarize(results)
+    summary = summarize(results, by_task=args.task == "all")
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
     print(f"Results saved to {output_dir}")

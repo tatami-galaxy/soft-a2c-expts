@@ -65,6 +65,8 @@ def parse_config(argv=None, config_class=TrainingConfig, method=None):
             parser.error(f"Invalid --task_config JSON: {error}")
     if not isinstance(experiment.task_config, dict) or {"seed", "size"} & experiment.task_config.keys():
         parser.error("--task_config must be a JSON object without seed or size; use --seed.")
+    if experiment.task == "all" and experiment.task_config:
+        parser.error("--task all uses task defaults; leave --task_config empty.")
     if args.max_steps <= 0:
         parser.error("Streaming training requires --max_steps > 0.")
 

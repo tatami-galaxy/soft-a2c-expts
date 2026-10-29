@@ -14,7 +14,7 @@ class EvalConfig:
     task: str = "leg_counting"
     task_config: dict | str | None = field(default_factory=dict)
     seed: int = 1_000_000
-    num_examples: int = 500
+    num_examples: int = 500  # Per task when task=all.
     generation_seed: int = 42
     max_new_tokens: int = 8192
     temperature: float = 0.6
@@ -39,6 +39,8 @@ def parse_eval_config(argv=None):
             parser.error(f"Invalid --task_config JSON: {error}")
     if not isinstance(args.task_config, dict) or {"seed", "size"} & args.task_config.keys():
         parser.error("--task_config must be a JSON object without seed or size.")
+    if args.task == "all" and args.task_config:
+        parser.error("--task all uses task defaults; leave --task_config empty.")
     if min(args.num_examples, args.max_new_tokens, args.tensor_parallel_size, args.max_num_seqs) <= 0:
         parser.error("num_examples, max_new_tokens, tensor_parallel_size, and max_num_seqs must be positive.")
     if not 0 < args.gpu_memory_utilization <= 1:
