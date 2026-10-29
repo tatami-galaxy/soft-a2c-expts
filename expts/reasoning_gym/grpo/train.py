@@ -5,9 +5,11 @@ From the repository root (select an available GPU):
         --task leg_counting --max_steps 100
 
 MiniCPM5-2B-SFT uses the same thinking/answer format. Set its sampling parameters:
-    CUDA_VISIBLE_DEVICES=7 uv run python -m expts.reasoning_gym.grpo.train \
-        --model_name openbmb/MiniCPM5-2B-SFT --task leg_counting \
-        --temperature 1.0 --top_k 0 --max_steps 100
+   CUDA_VISIBLE_DEVICES=6 uv run python -m expts.reasoning_gym.grpo.train \
+    --task countdown --run-name MiniCPM5-2B-SFT_countdown_constant \
+        --learning-rate 1e-6 --lr_scheduler_type constant \
+            --model_name openbmb/MiniCPM5-2B-SFT --per-device-train-batch-size 8 \
+                --gradient-accumulation-steps 2 
 
 Both models use top_p=0.95 and min_p=0.0. Qwen sampling remains the default.
 Override task defaults with --task_config '{"max_animals": 5}'.
