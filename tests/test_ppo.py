@@ -12,9 +12,9 @@ from trl import GRPOTrainer
 from trl.trainer.base_trainer import _BaseTrainer
 from transformers import TrainingArguments
 
-from expts.reasoning_gym.ppo.config import PPOConfig, parse_config
-from expts.reasoning_gym.ppo.trainer import PPOTrainer, compute_gae, masked_whiten
-from expts.reasoning_gym.task_utils import generate_examples, make_reward_function
+from expts.ppo.config import PPOConfig, parse_config
+from expts.ppo.trainer import PPOTrainer, compute_gae, masked_whiten
+from expts.data.reasoning_gym import generate_examples, make_reward_function
 
 
 class ConfigTest(unittest.TestCase):
@@ -38,12 +38,12 @@ class ConfigTest(unittest.TestCase):
                 self.config(**kwargs)
 
     def test_cli_preserves_task_and_sampling_overrides(self):
-        experiment, config = parse_config([
+        experiment, data, config = parse_config([
             "--use_cpu", "true", "--bf16", "false", "--report_to", "none", "--use_vllm", "false",
             "--task", "leg_counting", "--task_config", '{"max_animals": 5}',
             "--temperature", "1.0", "--top_k", "0",
         ])
-        self.assertEqual(experiment.task_config, {"max_animals": 5})
+        self.assertEqual(data.task_config, {"max_animals": 5})
         self.assertEqual(config.temperature, 1)
         self.assertEqual(config.top_k, 0)
         self.assertTrue(config.run_name.startswith("ppo-"))

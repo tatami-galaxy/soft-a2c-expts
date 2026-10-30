@@ -4,7 +4,8 @@ from dataclasses import dataclass
 
 from transformers.trainer_utils import SchedulerType
 
-from ..grpo.config import TrainingConfig, parse_config as parse_training_config
+from ..grpo.config import TrainingConfig
+from ..config import parse_training_config
 
 
 @dataclass

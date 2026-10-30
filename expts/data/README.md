@@ -7,15 +7,15 @@ optional `--task_config` overrides.
 ## Uniform task training
 
 ```sh
-PYTHONHASHSEED=0 CUDA_VISIBLE_DEVICES=2 uv run python -m expts.reasoning_gym.grpo.train \
+PYTHONHASHSEED=0 CUDA_VISIBLE_DEVICES=2 uv run python -m expts.grpo.train \
     --task all --model_name Qwen/Qwen3-1.7B --max_steps 100
 
-PYTHONHASHSEED=0 CUDA_VISIBLE_DEVICES=2 uv run python -m expts.reasoning_gym.ppo.train \
+PYTHONHASHSEED=0 CUDA_VISIBLE_DEVICES=2 uv run python -m expts.ppo.train \
     --task all --model_name Qwen/Qwen3-1.7B --max_steps 100
 ```
 
 Choose a GPU with enough free memory; PPO additionally loads a trainable critic.
-See [PPO settings](ppo/README.md) for its options and memory considerations.
+See [PPO settings](../ppo/README.md) for its options and memory considerations.
 
 `all` includes every registered task except the composite wrapper: 105 tasks
 in the installed reasoning-gym 0.1.25. Every new question independently selects
@@ -51,7 +51,7 @@ Loss weighting and truncation handling are unchanged.
 ## Balanced evaluation
 
 ```sh
-PYTHONHASHSEED=0 CUDA_VISIBLE_DEVICES=2 uv run python -m expts.reasoning_gym.eval.eval \
+PYTHONHASHSEED=0 CUDA_VISIBLE_DEVICES=2 uv run python -m expts.eval.eval \
     --task all --model_name /path/to/run/final --num_examples 10
 ```
 

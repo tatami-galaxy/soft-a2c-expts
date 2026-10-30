@@ -1,11 +1,10 @@
-"""Reasoning Gym data, prompts, and rewards shared by the experiments."""
+"""Reasoning Gym configuration, data, prompts, and task-specific rewards."""
 
 import json
 import os
 from collections import defaultdict
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from itertools import count
-from pathlib import Path
 from random import Random
 
 import reasoning_gym
@@ -15,6 +14,66 @@ from reasoning_gym.utils import SYSTEM_PROMPTS, extract_answer
 
 
 MIXTURE_CHUNK_SIZE = 1024
+
+
+@dataclass
+class DataConfig:
+    task: str = "leg_counting"
+    task_config: dict | str | None = field(default_factory=dict)
+    dataset_seed: int | None = None  # Training seed, or 1000000 for evaluation.
+
+
+def validate_config(config, parser):
+    if isinstance(config.task_config, str):
+        try:
+            config.task_config = json.loads(config.task_config)
+        except json.JSONDecodeError as error:
+            parser.error(f"Invalid --task_config JSON: {error}")
+    if not isinstance(config.task_config, dict) or {"seed", "size"} & config.task_config.keys():
+        parser.error("--task_config must be an object without seed or size; use --dataset_seed.")
+    if config.task == "all" and config.task_config:
+        parser.error("--task all uses task defaults; leave --task_config empty.")
+
+
+def data_metadata(config, dataset):
+    return {
+        "task": config.task,
+        "task_config": resolved_task_config(dataset),
+        "task_sampling": task_sampling_config(config.task),
+        "system_prompt": SYSTEM_PROMPTS["default"],
+        "answer_format": "think_then_answer_tags",
+    }
+
+
+def load_training_data(config, seed):
+    from datasets import IterableDataset
+
+    seed = config.dataset_seed if config.dataset_seed is not None else seed
+    dataset = create_task_dataset(config.task, config.task_config, seed)
+    rows = IterableDataset.from_generator(generate_examples, gen_kwargs={
+        "task": config.task, "task_config": config.task_config, "seed": seed,
+    })
+    return rows, dataset, data_metadata(config, dataset)
+
+
+def load_eval_data(config, num_examples):
+    seed = config.dataset_seed if config.dataset_seed is not None else 1_000_000
+    dataset = create_task_dataset(config.task, config.task_config, seed, size=num_examples)
+    entries = [{"example_id": i, **entry} for i, entry in enumerate(evaluation_entries(dataset))]
+    metadata = data_metadata(config, dataset)
+    metadata.pop("task_sampling")  # Evaluation does not use the training mixture stream.
+    metadata["evaluation_sampling"] = "balanced_per_task" if config.task == "all" else "single_task"
+    metadata["python_hash_seed"] = os.environ.get("PYTHONHASHSEED", "random")
+    return entries, dataset, metadata
+
+
+def score_response(dataset, response, entry):
+    answer, thinking_done = extract_final_answer(response)
+    return {
+        "model_answer": answer,
+        "score": float(dataset.score_answer(answer, entry)) if answer else 0.0,
+        "thinking_complete": thinking_done,
+    }
 
 
 def create_task_dataset(task, task_config, seed, size=None):
@@ -57,20 +116,6 @@ def evaluation_entries(dataset):
     if isinstance(dataset, CompositeDataset):
         return [entry for child in dataset.datasets.values() for entry in child]
     return list(dataset)
-
-
-def validate_mixture_resume(checkpoint, config):
-    path = Path(checkpoint).parent / "run_config.json"
-    if not path.exists() and config["task"] != "all":
-        return
-    previous = json.loads(path.read_text())
-    if previous.get("task") != "all" and config["task"] != "all":
-        return
-    for key in ("task", "task_config", "task_sampling"):
-        if previous.get(key) != config.get(key):
-            raise ValueError(f"Cannot resume with changed {key}.")
-    if previous["versions"]["reasoning-gym"] != config["versions"]["reasoning-gym"]:
-        raise ValueError("Cannot resume a task mixture with a different reasoning-gym version.")
 
 
 def make_prompt(question):
@@ -119,15 +164,14 @@ def make_reward_function(dataset, tokenizer):
         for token_ids, example in zip(completion_ids, entry, strict=True):
             # Decode tokens ourselves so TRL's response parsing cannot remove </think>.
             response = tokenizer.decode(token_ids, skip_special_tokens=False)
-            answer, thinking_done = extract_final_answer(response)
             try:
-                reward = dataset.score_answer(answer, example) if answer else 0.0
+                result = score_response(dataset, response, example)
             except Exception as error:
                 name = example["metadata"]["source_dataset"]
                 raise RuntimeError(f"Failed to score task {name!r}.") from error
-            answers.append(answer)
-            rewards.append(float(reward))
-            thinking_finished.append(thinking_done)
+            answers.append(result["model_answer"])
+            rewards.append(result["score"])
+            thinking_finished.append(result["thinking_complete"])
 
         if log_metric:
             log_metric("full_credit_rate", sum(r == 1.0 for r in rewards) / len(rewards))

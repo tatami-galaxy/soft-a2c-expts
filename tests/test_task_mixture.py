@@ -16,10 +16,10 @@ from reasoning_gym.dataset import ProceduralDataset
 from reasoning_gym.factory import DATASETS
 from trl.trainer.utils import repeat_iterable_dataset
 
-from expts.reasoning_gym.task_utils import (
+from expts.data.reasoning_gym import (
     create_task_dataset, evaluation_entries, generate_examples, make_reward_function,
-    resolved_task_config, task_sampling_config, validate_mixture_resume,
 )
+from expts.train import validate_resume
 
 
 @dataclass
@@ -67,7 +67,7 @@ class TaskMixtureTest(unittest.TestCase):
         self.assertTrue(any(a == b for a, b in zip(names, names[1:])))
 
     def test_chunk_boundaries_match_one_contiguous_seed_range(self):
-        with patch("expts.reasoning_gym.task_utils.MIXTURE_CHUNK_SIZE", 4):
+        with patch("expts.data.reasoning_gym.MIXTURE_CHUNK_SIZE", 4):
             examples = list(islice(generate_examples("all", {}, 42), 12))
             replay = list(islice(generate_examples("all", {}, 42), 12))
         continuous = create_task_dataset("all", {}, 42, size=12)
@@ -105,11 +105,15 @@ class TaskMixtureTest(unittest.TestCase):
         self.assertEqual(metrics["tasks/b/questions_per_generation"], 0)
 
     def test_balanced_evaluation_and_macro_average(self):
-        from expts.reasoning_gym.eval.eval import summarize
+        from expts.eval.eval import summarize
+        from expts.data.reasoning_gym import DataConfig, load_eval_data
 
         dataset = create_task_dataset("all", {}, 42, size=3)
         entries = evaluation_entries(dataset)
         self.assertEqual(Counter(e["metadata"]["source_dataset"] for e in entries), {"a": 3, "b": 3})
+        prepared, _, metadata = load_eval_data(DataConfig(task="all", dataset_seed=42), 3)
+        self.assertEqual([{k: v for k, v in e.items() if k != "example_id"} for e in prepared], entries)
+        self.assertEqual(metadata["evaluation_sampling"], "balanced_per_task")
         results = [
             {"metadata": {"source_dataset": task}, "score": score, "model_answer": "x",
              "response_length": 2, "truncated": False, "thinking_complete": True}
@@ -122,19 +126,31 @@ class TaskMixtureTest(unittest.TestCase):
 
     def test_resume_rejects_changed_mixture(self):
         dataset = create_task_dataset("all", {}, 42)
-        config = {"task": "all", "task_config": resolved_task_config(dataset),
-                  "task_sampling": task_sampling_config("all"), "versions": {"reasoning-gym": "test"}}
-        self.assertEqual(config["task_config"]["datasets"][0]["config"]["seed"], 43)
+        from expts.data.reasoning_gym import DataConfig, data_metadata
+
+        config = {"dataset": "reasoning_gym", "model_name": "test", "method": "grpo",
+                  "data": data_metadata(DataConfig(task="all"), dataset),
+                  "training": {"max_steps": 1, "lr_scheduler_type": "constant"},
+                  "versions": {"reasoning-gym": "test"}}
+        self.assertEqual(config["data"]["task_config"]["datasets"][0]["config"]["seed"], 43)
         with tempfile.TemporaryDirectory() as root:
             (Path(root) / "run_config.json").write_text(json.dumps(config))
             checkpoint = Path(root) / "checkpoint-1"
-            validate_mixture_resume(checkpoint, config)
-            for key, value in (("task", "a"), ("task_config", {}), ("task_sampling", {}),
-                               ("versions", {"reasoning-gym": "other"})):
+            validate_resume(checkpoint, config)
+            for key, value in (("task", "a"), ("task_config", {}), ("task_sampling", {})):
                 changed = copy.deepcopy(config)
-                changed[key] = value
+                changed["data"][key] = value
                 with self.subTest(key=key), self.assertRaises(ValueError):
-                    validate_mixture_resume(checkpoint, changed)
+                    validate_resume(checkpoint, changed)
+            # Metadata written before the reorganization is still understood.
+            legacy = {key: value for key, value in config.items() if key not in ("data", "dataset", "method")}
+            legacy.update({key: config["data"][key] for key in ("task", "task_config", "task_sampling")})
+            (Path(root) / "run_config.json").write_text(json.dumps(legacy))
+            validate_resume(checkpoint, config)
+            changed = copy.deepcopy(config)
+            changed["versions"]["reasoning-gym"] = "other"
+            with self.assertRaisesRegex(ValueError, "version"):
+                validate_resume(checkpoint, changed)
 
     def test_failure_is_named_and_not_skipped(self):
         with patch.object(TaskA, "__getitem__", side_effect=ValueError("broken")):

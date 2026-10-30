@@ -1,4 +1,4 @@
-"""PPO built on TRL GRPO's generation and clipped policy loss (tested with TRL 1.16.0).
+"""Dataset-independent PPO using TRL GRPO's generation and clipped policy loss.
 
 Adapted from self-distill/train/ppo/train_ppo.py. A separate critic supplies
 token-level GAE in place of group-relative advantages. Only one training process
@@ -130,7 +130,7 @@ class PPOTrainer(GRPOTrainer):
         if raw_rewards is None or raw_rewards.shape[0] != mask.shape[0]:
             raise RuntimeError("TRL's reward hook did not return rewards aligned with PPO completions.")
         if not torch.isfinite(raw_rewards).all():
-            raise ValueError("Reasoning Gym PPO requires a finite score for every completion.")
+            raise ValueError("PPO requires a finite score for every completion.")
         weights = self.reward_weights.to(raw_rewards.device).unsqueeze(0)
         rewards = (raw_rewards * weights).sum(dim=1)
         token_rewards = torch.zeros_like(mask)

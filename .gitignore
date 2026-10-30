@@ -1,6 +1,6 @@
 # Experiment artifacts
 models/
-data/
+/data/
 results/
 
 # Python environments and caches
