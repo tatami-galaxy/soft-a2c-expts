@@ -11,8 +11,8 @@ class TrainingConfig(GRPOConfig):
     """Our training defaults; all other options inherit TRL's defaults."""
 
     max_steps: int = 1000
-    per_device_train_batch_size: int = 4
-    gradient_accumulation_steps: int = 4
+    per_device_train_batch_size: int = 8
+    gradient_accumulation_steps: int = 2
     num_generations: int = 8
     max_completion_length: int = 8192
     use_vllm: bool = True
