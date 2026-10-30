@@ -1,4 +1,4 @@
-r"""Evaluate fixed Reasoning Gym questions or a subset of a DeepScaleR holdout.
+r"""Evaluate Reasoning Gym questions or a DeepScaleR/DeepMath holdout subset.
 
 Run from the repository root, selecting an available GPU.
 
@@ -22,7 +22,15 @@ DeepScaleR: evaluate a base model on the same holdout subset:
         --dataset deepscaler --model_name Qwen/Qwen3-1.7B \
         --split_manifest /path/to/run/split_manifest.json --num_examples 100
 
-For DeepScaleR, num_examples selects the first N problems in the fixed holdout
+DeepMath: evaluate a checkpoint or a base model on its saved holdout subset:
+    CUDA_VISIBLE_DEVICES=2 uv run python -m expts.eval.eval \
+        --dataset deepmath --model_name /path/to/deepmath-run/final --num_examples 100
+
+    CUDA_VISIBLE_DEVICES=2 uv run python -m expts.eval.eval \
+        --dataset deepmath --model_name Qwen/Qwen3-1.7B \
+        --split_manifest /path/to/deepmath-run/split_manifest.json --num_examples 100
+
+For both math datasets, num_examples selects the first N problems in the fixed holdout
 order; it does not change the training split. Local final/ and checkpoint-N/
 directories automatically resolve the training run's split manifest.
 
@@ -76,7 +84,7 @@ def main():
     entries, scorer, metadata = module.load_eval_data(data_config, args.num_examples)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=False)
-    if run.dataset == "deepscaler":
+    if run.dataset in {"deepscaler", "deepmath"}:
         copyfile(data_config.split_manifest, output_dir / "split_manifest.json")
     with (output_dir / "eval_set.jsonl").open("w") as file:
         for entry in entries:

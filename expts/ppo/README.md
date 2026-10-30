@@ -5,8 +5,8 @@ This trainer adapts `/home/ujan/self-distill/train/ppo/train_ppo.py`: TRL's
 policy loss. A separate, fully trainable critic supplies token-level GAE and a
 clipped value loss. There is no reference or reward model; Reasoning Gym's
 task scorer supplies the terminal reward, including partial credit. DeepScaleR
-uses a binary Math-Verify reward through the same trainer; select it with
-`--dataset deepscaler`. See the [main README](../../README.md) for math data
+and DeepMath use a binary Math-Verify reward through the same trainer; select
+`--dataset deepscaler` or `--dataset deepmath`. See the [main README](../../README.md) for math data
 preparation and holdout evaluation.
 
 From the repository root, select one available training GPU:
@@ -27,7 +27,7 @@ the critic's prediction before that token. `vf_coef=0.1`, value clipping is
 
 Training and evaluation use the same dataset-specific prompts and extraction
 as GRPO: a completed `</think>` followed by an `<answer>...</answer>` block for
-Reasoning Gym, or a `\boxed{...}` answer for DeepScaleR. Missing
+Reasoning Gym, or a `\boxed{...}` answer for either math dataset. Missing
 answers score zero. By default, truncated completions are excluded from both
 actor and critic losses. With `--mask_truncated_completions false`, the token
 budget is treated as the episode end and the normal task score is used;

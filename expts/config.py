@@ -23,12 +23,15 @@ def dataset_module(name):
     if name == "deepscaler":
         from .data import deepscaler
         return deepscaler
+    if name == "deepmath":
+        from .data import deepmath
+        return deepmath
     raise ValueError(f"Unknown dataset: {name}")
 
 
 def parse_options(config_class, argv=None):
     selector = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
-    selector.add_argument("--dataset", choices=("reasoning_gym", "deepscaler"), default="reasoning_gym")
+    selector.add_argument("--dataset", choices=("reasoning_gym", "deepscaler", "deepmath"), default="reasoning_gym")
     selected, _ = selector.parse_known_args(argv)
     module = dataset_module(selected.dataset)
     parser = HfArgumentParser((RunConfig, module.DataConfig, config_class), allow_abbrev=False)
@@ -47,14 +50,14 @@ def parse_training_config(argv=None, config_class=None, method="grpo"):
     if args.max_steps <= 0:
         parser.error("Training requires --max_steps > 0.")
     model_label = Path(run.model_name).name
-    label = data.task if run.dataset == "reasoning_gym" else "deepscaler"
+    label = data.task if run.dataset == "reasoning_gym" else run.dataset
     if args.run_name is None:
         args.run_name = f"{method}-{model_label}-{label}-seed{args.seed}"
     if args.output_dir == "trainer_output":
         args.output_dir = f"/mnt/data/ujan/sac/{run.dataset}/{args.run_name}"
     # A finite math dataset should reshuffle every epoch; the RG stream orders itself.
     if args.shuffle_dataset is None:
-        args.shuffle_dataset = run.dataset == "deepscaler"
+        args.shuffle_dataset = run.dataset in {"deepscaler", "deepmath"}
     for name in ("chat_template_kwargs", "generation_kwargs"):
         setattr(args, name, {**parser.get_default(name), **(getattr(args, name) or {})})
     if args.chat_template_kwargs["enable_thinking"] is not True:

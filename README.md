@@ -1,14 +1,16 @@
 # Small LLM reasoning experiments
 
-GRPO and PPO support `--dataset reasoning_gym` (the default) and
-`--dataset deepscaler`. Training methods live in `expts/grpo` and `expts/ppo`;
+GRPO and PPO support `--dataset reasoning_gym` (the default),
+`--dataset deepscaler`, and `--dataset deepmath`. Training methods live in `expts/grpo` and `expts/ppo`;
 dataset configs, prompts, and scoring live in `expts/data`. Both methods use
 `expts/train.py` for model setup, run metadata, and checkpoint handling.
 `expts/eval` evaluates fixed questions with the same prompts and scorers.
+The two finite math datasets share preparation and scoring in `expts/data/math_data.py`;
+their source mappings and pinned revisions live in separate dataset modules.
 
 Select a training GPU with `CUDA_VISIBLE_DEVICES`. PPO requires one visible
 training GPU and adds a separate trainable critic. The training environment
-targets TRL 1.16.0, Transformers 5.17.0, and vLLM 0.31.0. DeepScaleR additionally
+targets TRL 1.16.0, Transformers 5.17.0, and vLLM 0.31.0. Each math dataset additionally
 uses the dependencies in `requirements-math.txt`:
 
 ```sh
@@ -73,7 +75,39 @@ Training and evaluation call the same scoring function. Truncated completions
 are masked from training losses by default, as in the existing experiments;
 evaluation reports their actual extracted-answer score and truncation status.
 
+## DeepMath-103K
+
+```sh
+CUDA_VISIBLE_DEVICES=2 uv run python -m expts.grpo.train \
+    --dataset deepmath --model_name Qwen/Qwen3-1.7B \
+    --run_name grpo-qwen17-deepmath --max_steps 100
+
+CUDA_VISIBLE_DEVICES=2 uv run python -m expts.ppo.train \
+    --dataset deepmath --model_name Qwen/Qwen3-1.7B \
+    --run_name ppo-qwen17-deepmath --max_steps 100
+
+CUDA_VISIBLE_DEVICES=2 uv run python -m expts.eval.eval \
+    --dataset deepmath --model_name /path/to/deepmath-run/final --num_examples 100
+```
+
+The [dataset](https://huggingface.co/datasets/zwhe99/DeepMath-103K) is pinned to
+`5cf055d1fe3d7a2eb19719ac020211469736ae44`. It supplies `question` as the prompt
+and `final_answer` as the reward reference. `topic` and `difficulty` are retained
+in example/result metadata. The three `r1_solution_*` columns are excluded;
+the loader projects only the four needed Parquet columns.
+
+DeepMath uses the same answer format, Math-Verify reward, auditing, and seeded
+holdout procedure described above. Its split manifests live under
+`data/deepmath/`; they cannot be substituted for DeepScaleR manifests.
+The defaults remain `--source_split train`, `--holdout_size 500`, and
+`--split_seed 42`. Training samples the cleaned dataset with epoch shuffling,
+without topic or difficulty filtering. Evaluation uses the saved holdout order,
+not the original dataset's first or last rows.
+
 ## Evaluate a holdout subset
+
+Both math datasets support the commands below; for DeepMath, use
+`--dataset deepmath` and the corresponding DeepMath run/manifest path.
 
 ```sh
 CUDA_VISIBLE_DEVICES=2 uv run python -m expts.eval.eval \
@@ -101,16 +135,17 @@ future work.
 
 For Reasoning Gym, evaluation uses `--task` and `--task_config`, and
 `--num_examples` remains the number per task when `--task all` is selected.
-`--dataset_seed` controls its generated questions (default 1000000 for eval);
-DeepScaleR uses `--split_seed` for partitioning instead. Dataset-specific flags are accepted only for the selected
-dataset. Run `--dataset deepscaler --help` to see its options.
+`--dataset_seed` controls its generated questions (default 1000000 for eval).
+The math datasets use `--split_seed` for partitioning instead. Dataset-specific
+flags are accepted only for the selected dataset. Run `--dataset deepmath --help`
+to see its options.
 
 ## Reproducibility and checks
 
 `run_config.json` separates `data` settings from `training` settings and records
 package versions. Output directories default to
 `/mnt/data/ujan/sac/<dataset>/<run_name>`; use `--output_dir` to override.
-W&B projects default to the dataset name (`reasoning-gym` or `deepscaler`).
+W&B projects default to the dataset name (`reasoning-gym`, `deepscaler`, or `deepmath`).
 Resume using `--resume_from_checkpoint PATH` and the original settings.
 Data, scoring, and optimizer setting changes are rejected. Extending
 `max_steps` requires a constant learning-rate schedule. Old Reasoning Gym run

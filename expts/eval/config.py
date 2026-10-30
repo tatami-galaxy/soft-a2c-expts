@@ -9,7 +9,7 @@ from ..config import parse_options, run_metadata
 
 @dataclass
 class EvalConfig:
-    num_examples: int = 500  # Per task for RG task=all; total for DeepScaleR.
+    num_examples: int = 500  # Per task for RG task=all; total for finite math datasets.
     generation_seed: int = 42
     max_new_tokens: int = 8192
     temperature: float = 0.6
@@ -31,14 +31,14 @@ def parse_eval_config(argv=None):
         parser.error("gpu_memory_utilization must be in (0, 1].")
     if args.temperature <= 0 or not 0 < args.top_p <= 1 or args.top_k < 0:
         parser.error("Sampling requires temperature > 0, 0 < top_p <= 1, and top_k >= 0.")
-    if run.dataset == "deepscaler" and data.split_manifest is None:
+    if run.dataset in {"deepscaler", "deepmath"} and data.split_manifest is None:
         previous = run_metadata(run.model_name)
-        if previous and previous.get("dataset") == "deepscaler":
+        if previous and previous.get("dataset") == run.dataset:
             manifest = Path(run.model_name).parent / "split_manifest.json"
             if not manifest.is_file():
                 parser.error(f"Training split manifest is missing: {manifest}")
             data.split_manifest = str(manifest)
-    label = data.task if run.dataset == "reasoning_gym" else "deepscaler"
+    label = data.task if run.dataset == "reasoning_gym" else run.dataset
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     args.output_dir = str(Path(args.output_dir or (
         f"results/{run.dataset}/eval/{Path(run.model_name).name}-{label}-{timestamp}"

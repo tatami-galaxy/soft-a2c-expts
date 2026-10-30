@@ -65,7 +65,7 @@ def train(run, data_config, args, method):
             raise ValueError(f"No checkpoint found in {output_dir}")
     if not checkpoint and (output_dir / "run_config.json").exists():
         raise FileExistsError(f"Run already exists: {output_dir}. Resume or choose a new output_dir.")
-    if checkpoint and run.dataset == "deepscaler" and data_config.split_manifest is None:
+    if checkpoint and run.dataset in {"deepscaler", "deepmath"} and data_config.split_manifest is None:
         data_config.split_manifest = str(Path(checkpoint).parent / "split_manifest.json")
 
     module = dataset_module(run.dataset)
@@ -97,7 +97,7 @@ def train(run, data_config, args, method):
     try:
         if trainer.accelerator.is_main_process:
             output_dir.mkdir(parents=True, exist_ok=True)
-            if run.dataset == "deepscaler":
+            if run.dataset in {"deepscaler", "deepmath"}:
                 source, target = Path(data_config.split_manifest), output_dir / "split_manifest.json"
                 if source.resolve() != target.resolve():
                     copyfile(source, target)

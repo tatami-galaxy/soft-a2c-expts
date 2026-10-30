@@ -12,7 +12,7 @@ from datasets import Dataset
 from math_verify.errors import TimeoutException
 
 from expts.config import parse_training_config
-from expts.data import deepscaler as ds
+from expts.data import deepscaler as ds, math_data
 from expts.eval.config import parse_eval_config
 from expts.ppo.config import parse_config as parse_ppo_config
 from expts.train import validate_resume
@@ -27,29 +27,29 @@ class MathRewardTest(unittest.TestCase):
                                  ("35", "035"), ("x+1", "1+x"),
                                  (r"\{1,2\}", r"\{2,1\}"), ("2", "x=2")]:
             with self.subTest(gold=gold):
-                result = ds.score_response(None, "</think>\\boxed{" + prediction + "}", {"answer": gold})
+                result = math_data.score_response(None, "</think>\\boxed{" + prediction + "}", {"answer": gold})
                 self.assertEqual(result["score"], 1.0)
                 self.assertIsNone(result["verifier_error"])
-        self.assertEqual(ds.score_response(None, r"</think>\boxed{3}", {"answer": "2"})["score"], 0.)
+        self.assertEqual(math_data.score_response(None, r"</think>\boxed{3}", {"answer": "2"})["score"], 0.)
 
     def test_only_last_box_after_thinking_counts(self):
         for text in [r"\boxed{2}", r"\boxed{2}</think>unfinished", r"</think>\boxed{}",
                      r"</think>\boxed{2", r"</think>\boxed{2} then \boxed{3}"]:
             with self.subTest(text=text):
-                self.assertEqual(ds.score_response(None, text, {"answer": "2"})["score"], 0.)
-        answer, done = ds.extract_final_answer(r"</think>\boxed{\frac{1}{2}}")
+                self.assertEqual(math_data.score_response(None, text, {"answer": "2"})["score"], 0.)
+        answer, done = math_data.extract_final_answer(r"</think>\boxed{\frac{1}{2}}")
         self.assertEqual(answer, r"\frac{1}{2}")
         self.assertTrue(done)
 
     def test_empty_gold_is_never_rewarded_and_timeouts_are_logged(self):
         with self.assertRaisesRegex(ValueError, "reference"):
-            ds.score_response(None, r"</think>\boxed{1}", {"answer": ""})
-        with patch.object(ds, "verify", side_effect=TimeoutException("slow")):
-            result = ds.score_response(None, r"</think>\boxed{1}", {"answer": "1"})
+            math_data.score_response(None, r"</think>\boxed{1}", {"answer": ""})
+        with patch.object(math_data, "verify", side_effect=TimeoutException("slow")):
+            result = math_data.score_response(None, r"</think>\boxed{1}", {"answer": "1"})
         self.assertEqual(result["score"], 0.)
         self.assertEqual(result["verifier_error"], "timeout")
-        with patch.object(ds, "parse_math", return_value=[]):
-            result = ds.score_response(None, r"</think>\boxed{1}", {"answer": "1"})
+        with patch.object(math_data, "parse_math", return_value=[]):
+            result = math_data.score_response(None, r"</think>\boxed{1}", {"answer": "1"})
         self.assertEqual(result["verifier_error"], "prediction_parse_failure")
 
     def test_training_callback_matches_evaluation(self):
@@ -57,10 +57,10 @@ class MathRewardTest(unittest.TestCase):
         texts = [r"</think>\boxed{0.5}", r"</think>\boxed{9}", "unfinished"]
         entries = [{"answer": r"\frac{1}{2}"}] * 3
         metrics, columns = {}, {}
-        rewards = ds.make_reward_function(None, tokenizer)(
+        rewards = math_data.make_reward_function(None, tokenizer)(
             texts, entries, log_metric=metrics.__setitem__, log_extra=columns.__setitem__,
         )
-        self.assertEqual(rewards, [ds.score_response(None, t, e)["score"] for t, e in zip(texts, entries)])
+        self.assertEqual(rewards, [math_data.score_response(None, t, e)["score"] for t, e in zip(texts, entries)])
         self.assertEqual(rewards, [1., 0., 0.])
         self.assertEqual(metrics["answer_extraction_rate"], 2 / 3)
 
@@ -77,16 +77,16 @@ class SplitTest(unittest.TestCase):
         self.settings = {
             "dataset_id": ds.DATASET_ID, "dataset_revision": ds.DEFAULT_REVISION,
             "source_split": "train", "holdout_size": 3, "split_seed": 42,
-            "schema_version": 1, "verifier": ds.verifier_metadata(),
+            "schema_version": 1, "verifier": math_data.verifier_metadata(),
         }
-        self.manifest = ds.build_manifest(self.rows, self.settings)
+        self.manifest = math_data.build_manifest(self.rows, self.settings)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / "split.json"
         self.path.write_text(json.dumps(self.manifest))
 
     def test_reproducible_deduplicated_partition(self):
-        self.assertEqual(self.manifest, ds.build_manifest(self.rows, self.settings))
+        self.assertEqual(self.manifest, math_data.build_manifest(self.rows, self.settings))
         self.assertFalse(set(self.manifest["train_ids"]) & set(self.manifest["validation_ids"]))
         self.assertEqual(len(self.manifest["train_ids"]), 5)
         self.assertEqual({r["reason"] for r in self.manifest["excluded"]},
